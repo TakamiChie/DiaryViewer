@@ -182,14 +182,90 @@ button {
 }
 
 .diary-meta {
+  position: relative;
   margin-bottom: 18px;
   padding-bottom: 12px;
   border-bottom: 1px solid var(--border);
 }
 
+.diary-title-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
 .diary-meta h2 {
   margin: 0;
   font-size: 1.15rem;
+}
+
+.toc-button {
+  min-height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px 10px;
+  color: var(--text);
+  background: var(--panel);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.toc-button:hover:not(:disabled),
+.toc-button:focus-visible {
+  border-color: var(--accent);
+}
+
+.toc-button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.toc-panel {
+  position: absolute;
+  z-index: 10;
+  top: calc(100% + 4px);
+  left: 0;
+  width: min(420px, 100%);
+  max-height: min(55vh, 420px);
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.diary-meta > .toc-panel {
+  top: 38px;
+}
+
+.toc-panel[hidden] {
+  display: none;
+}
+
+.toc-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.toc-list li {
+  margin-left: calc(var(--toc-depth) * 1rem);
+}
+
+.toc-list a {
+  display: block;
+  border-radius: 6px;
+  padding: 7px 8px;
+  color: var(--text);
+  text-decoration: none;
+  line-height: 1.4;
+}
+
+.toc-list a:hover,
+.toc-list a:focus-visible {
+  color: var(--accent);
+  background: var(--today);
 }
 
 .diary-meta p {
@@ -204,11 +280,33 @@ button {
   overflow-wrap: anywhere;
 }
 
+.markdown-heading-row {
+  position: relative;
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+}
+
+.markdown-heading-row > :is(h1, h2, h3, h4, h5, h6) {
+  min-width: 0;
+}
+
+.heading-toc-button {
+  flex: none;
+}
+
 .markdown-body h1,
 .markdown-body h2,
 .markdown-body h3 {
   line-height: 1.35;
   margin-top: 1.6em;
+  scroll-margin-top: 16px;
+}
+
+.markdown-body h4,
+.markdown-body h5,
+.markdown-body h6 {
+  scroll-margin-top: 16px;
 }
 
 .markdown-body img {

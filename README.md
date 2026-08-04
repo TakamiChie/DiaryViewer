@@ -11,6 +11,7 @@ GitHubのプライベートリポジトリにあるMarkdown日記を、ブラウ
 - 所有者、リポジトリ、ブランチ、フォルダ、ファイル名規則を設定可能
 - 設定をlocalStorageへ保存
 - MarkdownをHTMLへ変換
+- 日付横または本文見出し横のTOCからMarkdown内の見出しへジャンプ
 - HTMLサニタイズ
 
 ## 使い方

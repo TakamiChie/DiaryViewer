@@ -321,12 +321,26 @@ function applyDateTemplate(template, date) {
 
 function renderDiary(date, path, markdown) {
   const meta = document.createElement("header");
+  const titleRow = document.createElement("div");
   const title = document.createElement("h2");
+  const tocButton = document.createElement("button");
+  const tocPanel = document.createElement("nav");
   const pathText = document.createElement("p");
   const article = document.createElement("article");
 
   meta.className = "diary-meta";
+  titleRow.className = "diary-title-row";
   title.textContent = formatJapaneseDate(date);
+  tocButton.type = "button";
+  tocButton.className = "toc-button";
+  tocButton.textContent = "TOC";
+  tocButton.setAttribute("aria-label", "見出し一覧を表示");
+  tocButton.setAttribute("aria-expanded", "false");
+  tocButton.setAttribute("aria-controls", "toc-panel-meta");
+  tocPanel.id = "toc-panel-meta";
+  tocPanel.className = "toc-panel";
+  tocPanel.setAttribute("aria-label", "見出し一覧");
+  tocPanel.hidden = true;
   pathText.textContent =
     `${state.settings.owner}/${state.settings.repo} / ${path}`;
 
@@ -347,9 +361,149 @@ function renderDiary(date, path, markdown) {
     article.innerHTML = rawHtml;
   }
 
-  meta.append(title, pathText);
+  const headings = prepareHeadings(article);
+  renderToc(tocPanel, headings, tocButton);
+  addHeadingTocButtons(headings);
+
+  titleRow.append(title, tocButton);
+  meta.append(titleRow, tocPanel, pathText);
   elements.contentPanel.replaceChildren(meta, article);
   document.title = `${formatIsoDate(date)} - GitHub 日記ビューアー`;
+}
+
+function addHeadingTocButtons(headings) {
+  headings.forEach((heading, index) => {
+    const row = document.createElement("div");
+    const button = document.createElement("button");
+    const panel = document.createElement("nav");
+    const panelId = `toc-panel-heading-${index + 1}`;
+
+    row.className = "markdown-heading-row";
+    button.type = "button";
+    button.className = "toc-button heading-toc-button";
+    button.textContent = "TOC";
+    button.setAttribute("aria-label", `${heading.text}から見出し一覧を表示`);
+    button.setAttribute("aria-expanded", "false");
+    button.setAttribute("aria-controls", panelId);
+    panel.id = panelId;
+    panel.className = "toc-panel";
+    panel.setAttribute("aria-label", "見出し一覧");
+    panel.hidden = true;
+
+    heading.element.replaceWith(row);
+    row.append(heading.element, button, panel);
+    renderToc(panel, headings, button);
+  });
+}
+
+function prepareHeadings(article) {
+  const usedIds = new Set();
+
+  return Array.from(article.querySelectorAll("h1, h2, h3, h4, h5, h6"))
+    .map((heading, index) => {
+      const text = heading.textContent.trim();
+      if (!text) {
+        return null;
+      }
+
+      const baseId = createHeadingId(text) || `heading-${index + 1}`;
+      let id = baseId;
+      let suffix = 2;
+
+      while (usedIds.has(id)) {
+        id = `${baseId}-${suffix}`;
+        suffix += 1;
+      }
+
+      usedIds.add(id);
+      heading.id = id;
+      heading.tabIndex = -1;
+
+      return {
+        element: heading,
+        id,
+        level: Number(heading.tagName.slice(1)),
+        text
+      };
+    })
+    .filter(Boolean);
+}
+
+function createHeadingId(text) {
+  return text
+    .normalize("NFKC")
+    .toLocaleLowerCase("ja")
+    .replace(/\s+/g, "-")
+    .replace(/[^\p{Letter}\p{Number}_-]/gu, "")
+    .replace(/^-+|-+$/g, "");
+}
+
+function renderToc(panel, headings, button) {
+  if (headings.length === 0) {
+    button.disabled = true;
+    button.title = "見出しがありません";
+    return;
+  }
+
+  const list = document.createElement("ol");
+  const minimumLevel = Math.min(...headings.map((heading) => heading.level));
+
+  list.className = "toc-list";
+  headings.forEach((heading) => {
+    const item = document.createElement("li");
+    const link = document.createElement("a");
+
+    item.style.setProperty("--toc-depth", heading.level - minimumLevel);
+    link.href = `#${encodeURIComponent(heading.id)}`;
+    link.textContent = heading.text;
+    link.addEventListener("click", (event) => {
+      event.preventDefault();
+      closeToc(panel, button);
+      heading.element.scrollIntoView({ behavior: "smooth", block: "start" });
+      heading.element.focus({ preventScroll: true });
+      history.replaceState(null, "", `#${encodeURIComponent(heading.id)}`);
+    });
+
+    item.append(link);
+    list.append(item);
+  });
+  panel.append(list);
+
+  button.addEventListener("click", () => {
+    const shouldOpen = panel.hidden;
+    panel.hidden = !shouldOpen;
+    button.setAttribute("aria-expanded", String(shouldOpen));
+  });
+
+  document.addEventListener("click", (event) => {
+    if (!panel.hidden && !panel.contains(event.target) && event.target !== button) {
+      closeToc(panel, button);
+    }
+  }, { signal: createRemovalSignal(panel) });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !panel.hidden) {
+      closeToc(panel, button);
+      button.focus();
+    }
+  }, { signal: createRemovalSignal(panel) });
+}
+
+function closeToc(panel, button) {
+  panel.hidden = true;
+  button.setAttribute("aria-expanded", "false");
+}
+
+function createRemovalSignal(element) {
+  const controller = new AbortController();
+  const observer = new MutationObserver(() => {
+    if (!element.isConnected) {
+      controller.abort();
+      observer.disconnect();
+    }
+  });
+  observer.observe(elements.contentPanel, { childList: true });
+  return controller.signal;
 }
 
 function showStatus(message, isError = false) {
