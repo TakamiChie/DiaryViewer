@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="ja">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>GitHub 日記ビューアー</title>
+  <link rel="stylesheet" href="./main.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/16.3.0/lib/marked.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.4.11/purify.min.js"></script>
+</head>
+
+<body>
+  <main class="app">
+    <header class="topbar">
+      <div class="title-group">
+        <h1>GitHub 日記ビューアー</h1>
+        <p>午前4時までは前日を「今日」として表示します</p>
+      </div>
+      <button id="openSettingsButton" class="icon-button" type="button">
+        設定
+      </button>
+    </header>
+
+    <section class="calendar-panel" aria-label="週カレンダー">
+      <div class="calendar-header">
+        <button id="previousWeekButton" class="nav-button" type="button" aria-label="前の週">
+          ←
+        </button>
+        <div id="weekLabel" class="week-label"></div>
+        <button id="nextWeekButton" class="nav-button" type="button" aria-label="次の週">
+          →
+        </button>
+      </div>
+      <div id="weekGrid" class="week-grid"></div>
+    </section>
+
+    <section id="contentPanel" class="content-panel" aria-live="polite">
+      <p class="status">設定を読み込んでいます。</p>
+    </section>
+  </main>
+
+  <dialog id="settingsDialog">
+    <form id="settingsForm" class="settings-form">
+      <h2>GitHub接続設定</h2>
+
+      <div class="warning">
+        アクセストークンはブラウザのlocalStorageに保存されます。
+        自分専用の端末でのみ利用し、公開PCや共有PCでは使用しないでください。
+        トークンは対象リポジトリのContents読み取り権限だけに限定してください。
+      </div>
+
+      <div class="form-grid">
+        <label class="field">
+          <span>所有者名</span>
+          <input id="ownerInput" name="owner" autocomplete="off" required placeholder="例: takami-chie">
+        </label>
+
+        <label class="field">
+          <span>リポジトリ名</span>
+          <input id="repoInput" name="repo" autocomplete="off" required placeholder="例: diary">
+        </label>
+
+        <label class="field">
+          <span>ブランチ名</span>
+          <input id="branchInput" name="branch" autocomplete="off" required value="main">
+        </label>
+
+        <label class="field">
+          <span>日付切り替え時刻</span>
+          <input id="cutoffHourInput" name="cutoffHour" type="number" min="0" max="23" required value="4">
+        </label>
+
+        <label class="field full">
+          <span>日記フォルダ</span>
+          <input id="folderInput" name="folder" autocomplete="off" placeholder="例: diary/{YYYY}/{MM}（ルート直下なら空欄）">
+          <span class="help">
+            ファイル名と同様に {YYYY}、{YY}、{MM}、{M}、{DD}、{D} を使用できます
+          </span>
+        </label>
+
+        <label class="field full">
+          <span>ファイル名テンプレート</span>
+          <input id="fileTemplateInput" name="fileTemplate" autocomplete="off" required value="{YYYY}-{MM}-{DD}.md">
+          <span class="help">
+            使用可能: {YYYY}、{YY}、{MM}、{M}、{DD}、{D}
+          </span>
+        </label>
+
+        <label class="field full">
+          <span>Fine-grained personal access token</span>
+          <input id="tokenInput" name="token" type="password" autocomplete="off" required placeholder="github_pat_...">
+        </label>
+      </div>
+
+      <div class="dialog-actions">
+        <button id="clearSettingsButton" class="secondary-button" type="button">
+          設定を消去
+        </button>
+        <button id="cancelSettingsButton" class="secondary-button" type="button">
+          閉じる
+        </button>
+        <button class="primary-button" type="submit">
+          保存して表示
+        </button>
+      </div>
+    </form>
+  </dialog>
+  <script src="./main.js"></script>
+</body>
+
+</html>

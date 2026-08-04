@@ -1,0 +1,410 @@
+"use strict";
+
+const STORAGE_KEY = "githubDiaryViewerSettingsV1";
+const API_VERSION = "2022-11-28";
+
+const defaultSettings = {
+  owner: "",
+  repo: "",
+  branch: "main",
+  folder: "",
+  fileTemplate: "{YYYY}-{MM}-{DD}.md",
+  token: "",
+  cutoffHour: 4
+};
+
+const state = {
+  settings: loadSettings(),
+  selectedDate: getLogicalToday(4),
+  visibleWeekDate: getLogicalToday(4),
+  requestId: 0
+};
+
+const elements = {
+  contentPanel: document.querySelector("#contentPanel"),
+  weekGrid: document.querySelector("#weekGrid"),
+  weekLabel: document.querySelector("#weekLabel"),
+  settingsDialog: document.querySelector("#settingsDialog"),
+  settingsForm: document.querySelector("#settingsForm"),
+  openSettingsButton: document.querySelector("#openSettingsButton"),
+  cancelSettingsButton: document.querySelector("#cancelSettingsButton"),
+  clearSettingsButton: document.querySelector("#clearSettingsButton"),
+  previousWeekButton: document.querySelector("#previousWeekButton"),
+  nextWeekButton: document.querySelector("#nextWeekButton"),
+  ownerInput: document.querySelector("#ownerInput"),
+  repoInput: document.querySelector("#repoInput"),
+  branchInput: document.querySelector("#branchInput"),
+  folderInput: document.querySelector("#folderInput"),
+  fileTemplateInput: document.querySelector("#fileTemplateInput"),
+  tokenInput: document.querySelector("#tokenInput"),
+  cutoffHourInput: document.querySelector("#cutoffHourInput")
+};
+
+initialize();
+
+function initialize() {
+  bindEvents();
+
+  const cutoffHour = normalizeCutoffHour(state.settings.cutoffHour);
+  state.selectedDate = getLogicalToday(cutoffHour);
+  state.visibleWeekDate = new Date(state.selectedDate);
+
+  renderWeek();
+
+  if (hasRequiredSettings(state.settings)) {
+    loadDiary(state.selectedDate);
+  } else {
+    showStatus("最初にGitHub接続設定を入力してください。");
+    openSettings();
+  }
+}
+
+function bindEvents() {
+  elements.openSettingsButton.addEventListener("click", openSettings);
+  elements.cancelSettingsButton.addEventListener("click", () => {
+    elements.settingsDialog.close();
+  });
+
+  elements.clearSettingsButton.addEventListener("click", () => {
+    localStorage.removeItem(STORAGE_KEY);
+    state.settings = { ...defaultSettings };
+    fillSettingsForm(state.settings);
+    showStatus("設定を消去しました。");
+  });
+
+  elements.previousWeekButton.addEventListener("click", () => {
+    state.visibleWeekDate = addDays(state.visibleWeekDate, -7);
+    renderWeek();
+  });
+
+  elements.nextWeekButton.addEventListener("click", () => {
+    state.visibleWeekDate = addDays(state.visibleWeekDate, 7);
+    renderWeek();
+  });
+
+  elements.settingsForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+
+    state.settings = {
+      owner: elements.ownerInput.value.trim(),
+      repo: elements.repoInput.value.trim(),
+      branch: elements.branchInput.value.trim() || "main",
+      folder: trimSlashes(elements.folderInput.value.trim()),
+      fileTemplate: elements.fileTemplateInput.value.trim(),
+      token: elements.tokenInput.value.trim(),
+      cutoffHour: normalizeCutoffHour(elements.cutoffHourInput.value)
+    };
+
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state.settings));
+    elements.settingsDialog.close();
+
+    state.selectedDate = getLogicalToday(state.settings.cutoffHour);
+    state.visibleWeekDate = new Date(state.selectedDate);
+    renderWeek();
+    loadDiary(state.selectedDate);
+  });
+}
+
+function openSettings() {
+  fillSettingsForm(state.settings);
+  elements.settingsDialog.showModal();
+}
+
+function fillSettingsForm(settings) {
+  elements.ownerInput.value = settings.owner || "";
+  elements.repoInput.value = settings.repo || "";
+  elements.branchInput.value = settings.branch || "main";
+  elements.folderInput.value = settings.folder || "";
+  elements.fileTemplateInput.value =
+    settings.fileTemplate || "{YYYY}-{MM}-{DD}.md";
+  elements.tokenInput.value = settings.token || "";
+  elements.cutoffHourInput.value =
+    normalizeCutoffHour(settings.cutoffHour);
+}
+
+function loadSettings() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    return { ...defaultSettings, ...(stored || {}) };
+  } catch (error) {
+    console.warn("設定を読み込めませんでした。", error);
+    return { ...defaultSettings };
+  }
+}
+
+function hasRequiredSettings(settings) {
+  return Boolean(
+    settings.owner &&
+    settings.repo &&
+    settings.branch &&
+    settings.fileTemplate &&
+    settings.token
+  );
+}
+
+function normalizeCutoffHour(value) {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isInteger(parsed)) {
+    return 4;
+  }
+  return Math.min(23, Math.max(0, parsed));
+}
+
+function getLogicalToday(cutoffHour) {
+  const now = new Date();
+  const date = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate()
+  );
+
+  if (now.getHours() < cutoffHour) {
+    date.setDate(date.getDate() - 1);
+  }
+
+  return date;
+}
+
+function getWeekStart(date) {
+  const result = new Date(date);
+  const day = result.getDay();
+  const daysFromMonday = (day + 6) % 7;
+  result.setDate(result.getDate() - daysFromMonday);
+  result.setHours(0, 0, 0, 0);
+  return result;
+}
+
+function renderWeek() {
+  const weekStart = getWeekStart(state.visibleWeekDate);
+  const weekEnd = addDays(weekStart, 6);
+  const logicalToday = getLogicalToday(
+    normalizeCutoffHour(state.settings.cutoffHour)
+  );
+  const weekdays = ["月", "火", "水", "木", "金", "土", "日"];
+
+  elements.weekLabel.textContent =
+    `${formatJapaneseDate(weekStart)} 〜 ${formatJapaneseDate(weekEnd)}`;
+  elements.weekGrid.replaceChildren();
+
+  for (let index = 0; index < 7; index += 1) {
+    const date = addDays(weekStart, index);
+    const button = document.createElement("button");
+    const weekday = document.createElement("span");
+    const dayNumber = document.createElement("span");
+
+    button.type = "button";
+    button.className = "day-button";
+    button.dataset.date = formatIsoDate(date);
+    button.setAttribute(
+      "aria-label",
+      `${formatJapaneseDate(date)}曜日の日記を表示`
+    );
+
+    if (isSameDate(date, logicalToday)) {
+      button.classList.add("is-today");
+    }
+
+    if (isSameDate(date, state.selectedDate)) {
+      button.classList.add("is-selected");
+      button.setAttribute("aria-current", "date");
+    }
+
+    weekday.className = "weekday";
+    weekday.textContent = weekdays[index];
+
+    dayNumber.className = "day-number";
+    dayNumber.textContent = String(date.getDate());
+
+    button.append(weekday, dayNumber);
+    button.addEventListener("click", () => {
+      state.selectedDate = date;
+      state.visibleWeekDate = new Date(date);
+      renderWeek();
+      loadDiary(date);
+    });
+
+    elements.weekGrid.append(button);
+  }
+}
+
+async function loadDiary(date) {
+  if (!hasRequiredSettings(state.settings)) {
+    showStatus("GitHub接続設定を入力してください。");
+    return;
+  }
+
+  const requestId = ++state.requestId;
+  const path = buildDiaryPath(date, state.settings);
+  showStatus(`${formatJapaneseDate(date)}の日記を読み込んでいます。`);
+
+  try {
+    const markdown = await fetchDiary(path, state.settings);
+
+    if (requestId !== state.requestId) {
+      return;
+    }
+
+    renderDiary(date, path, markdown);
+  } catch (error) {
+    if (requestId !== state.requestId) {
+      return;
+    }
+
+    console.error(error);
+    showStatus(createFriendlyError(error, path), true);
+  }
+}
+
+async function fetchDiary(path, settings) {
+  const encodedOwner = encodeURIComponent(settings.owner);
+  const encodedRepo = encodeURIComponent(settings.repo);
+  const encodedPath = path
+    .split("/")
+    .map((part) => encodeURIComponent(part))
+    .join("/");
+  const url =
+    `https://api.github.com/repos/${encodedOwner}/${encodedRepo}` +
+    `/contents/${encodedPath}?ref=${encodeURIComponent(settings.branch)}`;
+
+  const response = await fetch(url, {
+    method: "GET",
+    headers: {
+      "Accept": "application/vnd.github.raw+json",
+      "Authorization": `Bearer ${settings.token}`,
+      "X-GitHub-Api-Version": API_VERSION
+    },
+    cache: "no-store"
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    const error = new Error(`GitHub API: ${response.status}`);
+    error.status = response.status;
+    error.body = body;
+    throw error;
+  }
+
+  return response.text();
+}
+
+function buildDiaryPath(date, settings) {
+  const folder = applyDateTemplate(
+    trimSlashes(settings.folder),
+    date
+  );
+  const fileName = applyDateTemplate(settings.fileTemplate, date);
+
+  return [folder, fileName]
+    .filter(Boolean)
+    .join("/");
+}
+
+function applyDateTemplate(template, date) {
+  const year = date.getFullYear();
+  const month = date.getMonth() + 1;
+  const day = date.getDate();
+
+  const replacements = {
+    "{YYYY}": String(year),
+    "{YY}": String(year).slice(-2),
+    "{MM}": String(month).padStart(2, "0"),
+    "{M}": String(month),
+    "{DD}": String(day).padStart(2, "0"),
+    "{D}": String(day)
+  };
+
+  return Object.entries(replacements).reduce(
+    (result, [key, value]) => result.replaceAll(key, value),
+    template
+  );
+}
+
+function renderDiary(date, path, markdown) {
+  const meta = document.createElement("header");
+  const title = document.createElement("h2");
+  const pathText = document.createElement("p");
+  const article = document.createElement("article");
+
+  meta.className = "diary-meta";
+  title.textContent = formatJapaneseDate(date);
+  pathText.textContent =
+    `${state.settings.owner}/${state.settings.repo} / ${path}`;
+
+  article.className = "markdown-body";
+
+  if (!window.marked) {
+    throw new Error("Markdown変換ライブラリを読み込めませんでした。");
+  }
+
+  const rawHtml = window.marked.parse(markdown, {
+    gfm: true,
+    breaks: true
+  });
+
+  if (window.DOMPurify) {
+    article.innerHTML = window.DOMPurify.sanitize(rawHtml);
+  } else {
+    article.innerHTML = rawHtml;
+  }
+
+  meta.append(title, pathText);
+  elements.contentPanel.replaceChildren(meta, article);
+  document.title = `${formatIsoDate(date)} - GitHub 日記ビューアー`;
+}
+
+function showStatus(message, isError = false) {
+  const status = document.createElement("p");
+  status.className = `status${isError ? " error" : ""}`;
+  status.textContent = message;
+  elements.contentPanel.replaceChildren(status);
+}
+
+function createFriendlyError(error, path) {
+  if (error.status === 404) {
+    return `日記が見つかりません: ${path}`;
+  }
+
+  if (error.status === 401) {
+    return "認証に失敗しました。アクセストークンを確認してください。";
+  }
+
+  if (error.status === 403) {
+    return "アクセスが拒否されました。トークンの対象リポジトリとContents読み取り権限を確認してください。";
+  }
+
+  if (error instanceof TypeError) {
+    return "GitHub APIへ接続できませんでした。通信状態やブラウザの制限を確認してください。";
+  }
+
+  return `日記の読み込みに失敗しました。${error.message || ""}`;
+}
+
+function addDays(date, days) {
+  const result = new Date(date);
+  result.setDate(result.getDate() + days);
+  return result;
+}
+
+function isSameDate(left, right) {
+  return (
+    left.getFullYear() === right.getFullYear() &&
+    left.getMonth() === right.getMonth() &&
+    left.getDate() === right.getDate()
+  );
+}
+
+function formatIsoDate(date) {
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0")
+  ].join("-");
+}
+
+function formatJapaneseDate(date) {
+  return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
+}
+
+function trimSlashes(value) {
+  return String(value || "").replace(/^\/+|\/+$/g, "");
+}
