@@ -8,9 +8,11 @@ GitHubのプライベートリポジトリにあるMarkdown日記を、ブラウ
 - 月曜始まりの週カレンダー
 - 日付をタップして日記を切り替え
 - GitHub REST APIでプライベートリポジトリから取得
-- 所有者、リポジトリ、ブランチ、フォルダ、ファイル名規則を設定可能
+- 所有者、リポジトリ、ブランチ、日記・添付フォルダ、ファイル名規則を設定可能
 - 設定をlocalStorageへ保存
 - MarkdownをHTMLへ変換
+- Mermaidコードブロックを図として描画
+- `![[画像・音声ファイル]]` をGitHub上の個別表示リンクへ変換
 - 日付横または本文見出し横のTOCからMarkdown内の見出しへジャンプ
 - HTMLサニタイズ
 
@@ -22,6 +24,7 @@ GitHubのプライベートリポジトリにあるMarkdown日記を、ブラウ
    - リポジトリ名
    - ブランチ名
    - 日記フォルダ
+   - 添付ファイルフォルダ（日記ファイルのあるフォルダからの相対パス）
    - ファイル名テンプレート
    - Fine-grained personal access token
 3. 「保存して表示」を押します。
@@ -45,6 +48,9 @@ GitHubのプライベートリポジトリにあるMarkdown日記を、ブラウ
 
 テンプレートに `/` を含めれば、日付ごとのサブフォルダも指定できます。
 
+添付ファイルフォルダにも同じ日付タグを使用できます。既定値は
+`attachment_files` です。空欄にすると日記ファイルと同じフォルダを参照します。
+
 ## GitHubトークン
 
 Fine-grained personal access tokenを作り、次の範囲だけを許可してください。
@@ -64,5 +70,5 @@ Fine-grained personal access tokenを作り、次の範囲だけを許可して�
 
 ## 補足
 
-Markdown変換にMarked、HTMLサニタイズにDOMPurifyをCDN経由で使用しています。
+Markdown変換にMarked、HTMLサニタイズにDOMPurify、図の描画にMermaidをCDN経由で使用しています。
 オフラインではMarkdownを装飾せず、プレーンテキストとして表示します。

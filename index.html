@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="./main.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/16.3.0/lib/marked.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.4.11/purify.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11.12.0/dist/mermaid.min.js"></script>
 </head>
 
 <body>
@@ -77,6 +78,14 @@
           <input id="folderInput" name="folder" autocomplete="off" placeholder="例: diary/{YYYY}/{MM}（ルート直下なら空欄）">
           <span class="help">
             ファイル名と同様に {YYYY}、{YY}、{MM}、{M}、{DD}、{D} を使用できます
+          </span>
+        </label>
+
+        <label class="field full">
+          <span>添付ファイルフォルダ</span>
+          <input id="attachmentFolderInput" name="attachmentFolder" autocomplete="off" value="attachment_files" placeholder="例: attachment_files/{YYYY}/{MM}（日記と同じフォルダなら空欄）">
+          <span class="help">
+            日記ファイルのあるフォルダからの相対パスです。{YYYY}、{YY}、{MM}、{M}、{DD}、{D}を使用できます
           </span>
         </label>
 

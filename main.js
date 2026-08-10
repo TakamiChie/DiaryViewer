@@ -2,12 +2,14 @@
 
 const STORAGE_KEY = "githubDiaryViewerSettingsV1";
 const API_VERSION = "2022-11-28";
+const MEDIA_EXTENSIONS = /\.(?:avif|bmp|gif|jpe?g|png|svg|webp|aac|flac|m4a|mp3|oga|ogg|opus|wav)(?:[?#].*)?$/i;
 
 const defaultSettings = {
   owner: "",
   repo: "",
   branch: "main",
   folder: "",
+  attachmentFolder: "attachment_files",
   fileTemplate: "{YYYY}-{MM}-{DD}.md",
   token: "",
   cutoffHour: 4
@@ -35,6 +37,7 @@ const elements = {
   repoInput: document.querySelector("#repoInput"),
   branchInput: document.querySelector("#branchInput"),
   folderInput: document.querySelector("#folderInput"),
+  attachmentFolderInput: document.querySelector("#attachmentFolderInput"),
   fileTemplateInput: document.querySelector("#fileTemplateInput"),
   tokenInput: document.querySelector("#tokenInput"),
   cutoffHourInput: document.querySelector("#cutoffHourInput")
@@ -90,6 +93,7 @@ function bindEvents() {
       repo: elements.repoInput.value.trim(),
       branch: elements.branchInput.value.trim() || "main",
       folder: trimSlashes(elements.folderInput.value.trim()),
+      attachmentFolder: trimSlashes(elements.attachmentFolderInput.value.trim()),
       fileTemplate: elements.fileTemplateInput.value.trim(),
       token: elements.tokenInput.value.trim(),
       cutoffHour: normalizeCutoffHour(elements.cutoffHourInput.value)
@@ -115,6 +119,7 @@ function fillSettingsForm(settings) {
   elements.repoInput.value = settings.repo || "";
   elements.branchInput.value = settings.branch || "main";
   elements.folderInput.value = settings.folder || "";
+  elements.attachmentFolderInput.value = settings.attachmentFolder || "";
   elements.fileTemplateInput.value =
     settings.fileTemplate || "{YYYY}-{MM}-{DD}.md";
   elements.tokenInput.value = settings.token || "";
@@ -244,7 +249,7 @@ async function loadDiary(date) {
       return;
     }
 
-    renderDiary(date, path, markdown);
+    await renderDiary(date, path, markdown);
   } catch (error) {
     if (requestId !== state.requestId) {
       return;
@@ -319,7 +324,7 @@ function applyDateTemplate(template, date) {
   );
 }
 
-function renderDiary(date, path, markdown) {
+async function renderDiary(date, path, markdown) {
   const meta = document.createElement("header");
   const titleRow = document.createElement("div");
   const title = document.createElement("h2");
@@ -350,16 +355,20 @@ function renderDiary(date, path, markdown) {
     throw new Error("Markdown変換ライブラリを読み込めませんでした。");
   }
 
-  const rawHtml = window.marked.parse(markdown, {
-    gfm: true,
-    breaks: true
-  });
+  const parser = new window.marked.Marked({ gfm: true, breaks: true });
+  parser.use(createMediaLinkExtension(date, path, state.settings));
+  const rawHtml = parser.parse(markdown);
 
   if (window.DOMPurify) {
     article.innerHTML = window.DOMPurify.sanitize(rawHtml);
   } else {
     article.innerHTML = rawHtml;
   }
+
+  article.querySelectorAll("a.media-file-link").forEach((link) => {
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+  });
 
   const headings = prepareHeadings(article);
   renderToc(tocPanel, headings, tocButton);
@@ -369,6 +378,120 @@ function renderDiary(date, path, markdown) {
   meta.append(titleRow, tocPanel, pathText);
   elements.contentPanel.replaceChildren(meta, article);
   document.title = `${formatIsoDate(date)} - GitHub 日記ビューアー`;
+
+  await renderMermaidDiagrams(article);
+}
+
+function createMediaLinkExtension(date, diaryPath, settings) {
+  return {
+    extensions: [{
+      name: "obsidianMediaLink",
+      level: "inline",
+      start(source) {
+        return source.indexOf("![[");
+      },
+      tokenizer(source) {
+        const match = /^!\[\[([^\]\n]+)\]\]/.exec(source);
+        if (!match) {
+          return undefined;
+        }
+
+        const [targetPart, labelPart] = match[1].split("|", 2);
+        const target = targetPart.trim();
+        if (!MEDIA_EXTENSIONS.test(target)) {
+          return undefined;
+        }
+
+        return {
+          type: "obsidianMediaLink",
+          raw: match[0],
+          target,
+          label: (labelPart || target.split("/").pop()).trim()
+        };
+      },
+      renderer(token) {
+        const href = buildGitHubFileUrl(token.target, date, diaryPath, settings);
+        return `<a class="media-file-link" href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(token.label)}</a>`;
+      }
+    }]
+  };
+}
+
+function buildGitHubFileUrl(target, date, diaryPath, settings) {
+  const cleanTarget = target.replace(/\\/g, "/").split("#", 1)[0].split("?", 1)[0];
+  const diaryFolder = diaryPath.includes("/")
+    ? diaryPath.slice(0, diaryPath.lastIndexOf("/"))
+    : "";
+  const attachmentFolder = applyDateTemplate(
+    trimSlashes(settings.attachmentFolder),
+    date
+  );
+  const combinedPath = cleanTarget.startsWith("/")
+    ? cleanTarget.slice(1)
+    : [diaryFolder, attachmentFolder, cleanTarget].filter(Boolean).join("/");
+  const resolvedPath = normalizeRepositoryPath(combinedPath);
+  const encodedPath = resolvedPath.split("/").map(encodeURIComponent).join("/");
+
+  return `https://github.com/${encodeURIComponent(settings.owner)}/${encodeURIComponent(settings.repo)}/blob/${encodeURIComponent(settings.branch)}/${encodedPath}`;
+}
+
+function normalizeRepositoryPath(path) {
+  const parts = [];
+  path.split("/").forEach((part) => {
+    if (!part || part === ".") {
+      return;
+    }
+    if (part === "..") {
+      parts.pop();
+      return;
+    }
+    parts.push(part);
+  });
+  return parts.join("/");
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+async function renderMermaidDiagrams(article) {
+  const blocks = Array.from(article.querySelectorAll("pre > code.language-mermaid"));
+  if (blocks.length === 0) {
+    return;
+  }
+
+  if (!window.mermaid) {
+    blocks.forEach((block) => {
+      block.parentElement.classList.add("mermaid-unavailable");
+    });
+    console.warn("Mermaid描画ライブラリを読み込めませんでした。");
+    return;
+  }
+
+  window.mermaid.initialize({
+    startOnLoad: false,
+    securityLevel: "strict",
+    theme: window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "default"
+  });
+
+  const diagrams = blocks.map((block) => {
+    const diagram = document.createElement("div");
+    diagram.className = "mermaid";
+    diagram.textContent = block.textContent;
+    block.parentElement.replaceWith(diagram);
+    return diagram;
+  });
+
+  try {
+    await window.mermaid.run({ nodes: diagrams, suppressErrors: true });
+  } catch (error) {
+    console.error("Mermaid記法を描画できませんでした。", error);
+  }
 }
 
 function addHeadingTocButtons(headings) {

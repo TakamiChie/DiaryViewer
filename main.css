@@ -440,3 +440,18 @@ dialog::backdrop {
     grid-column: auto;
   }
 }
+
+.markdown-body .mermaid {
+  margin: 1.25rem 0;
+  overflow-x: auto;
+  text-align: center;
+}
+
+.markdown-body .mermaid svg {
+  height: auto;
+  max-width: 100%;
+}
+
+.media-file-link::before {
+  content: "↗ ";
+}
