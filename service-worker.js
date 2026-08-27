@@ -7,8 +7,8 @@ const APP_SHELL = [
   "./main.css",
   "./main.js",
   "./manifest.webmanifest",
-  "./icons/icon-192.svg",
-  "./icons/icon-512.svg"
+  "./icons/icon-192.png",
+  "./icons/icon-512.png"
 ];
 const EXTERNAL_RESOURCES = [
   "https://cdnjs.cloudflare.com/ajax/libs/marked/16.3.0/lib/marked.umd.min.js",
