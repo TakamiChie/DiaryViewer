@@ -45,6 +45,14 @@ const elements = {
 
 initialize();
 
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./service-worker.js").catch((error) => {
+      console.warn("オフライン機能を有効にできませんでした。", error);
+    });
+  });
+}
+
 function initialize() {
   bindEvents();
 
