@@ -1,6 +1,6 @@
 "use strict";
 
-const CACHE_NAME = "diary-viewer-v1";
+const CACHE_NAME = "diary-viewer-v3";
 const APP_SHELL = [
   "./",
   "./index.html",
