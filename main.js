@@ -19,13 +19,16 @@ const state = {
   settings: loadSettings(),
   selectedDate: getLogicalToday(4),
   visibleWeekDate: getLogicalToday(4),
-  requestId: 0
+  requestId: 0,
+  summaryRequestId: 0,
+  weeklySummary: null
 };
 
 const elements = {
   contentPanel: document.querySelector("#contentPanel"),
   weekGrid: document.querySelector("#weekGrid"),
   weekLabel: document.querySelector("#weekLabel"),
+  weeklySummaryButton: document.querySelector("#weeklySummaryButton"),
   settingsDialog: document.querySelector("#settingsDialog"),
   settingsForm: document.querySelector("#settingsForm"),
   openSettingsButton: document.querySelector("#openSettingsButton"),
@@ -72,6 +75,11 @@ function initialize() {
 
 function bindEvents() {
   elements.openSettingsButton.addEventListener("click", openSettings);
+  elements.weeklySummaryButton.addEventListener("click", () => {
+    if (state.weeklySummary) {
+      renderWeeklySummary(state.weeklySummary);
+    }
+  });
   elements.cancelSettingsButton.addEventListener("click", () => {
     elements.settingsDialog.close();
   });
@@ -80,6 +88,8 @@ function bindEvents() {
     localStorage.removeItem(STORAGE_KEY);
     state.settings = { ...defaultSettings };
     fillSettingsForm(state.settings);
+    state.weeklySummary = null;
+    updateWeeklySummaryButton();
     showStatus("設定を消去しました。");
   });
 
@@ -238,6 +248,41 @@ function renderWeek() {
 
     elements.weekGrid.append(button);
   }
+
+  updateWeeklySummaryButton(weekStart);
+}
+
+async function updateWeeklySummaryButton(weekStart = getWeekStart(state.visibleWeekDate)) {
+  const requestId = ++state.summaryRequestId;
+  state.weeklySummary = null;
+  elements.weeklySummaryButton.disabled = true;
+
+  if (!hasRequiredSettings(state.settings)) {
+    elements.weeklySummaryButton.textContent = "週まとめなし";
+    return;
+  }
+
+  elements.weeklySummaryButton.textContent = "週まとめを確認中…";
+
+  try {
+    const summary = await fetchWeeklySummary(weekStart, state.settings);
+    if (requestId !== state.summaryRequestId) {
+      return;
+    }
+
+    state.weeklySummary = summary;
+    elements.weeklySummaryButton.disabled = !summary;
+    elements.weeklySummaryButton.textContent = summary
+      ? "この週のまとめを開く"
+      : "週まとめなし";
+  } catch (error) {
+    if (requestId !== state.summaryRequestId) {
+      return;
+    }
+
+    console.warn("週まとめを確認できませんでした。", error);
+    elements.weeklySummaryButton.textContent = "週まとめを確認できませんでした";
+  }
 }
 
 async function loadDiary(date) {
@@ -266,6 +311,26 @@ async function loadDiary(date) {
     console.error(error);
     showStatus(createFriendlyError(error, path), true);
   }
+}
+
+async function fetchWeeklySummary(date, settings) {
+  const weekStart = getWeekStart(date);
+
+  for (let offset = 0; offset <= 3; offset += 1) {
+    const summaryDate = addDays(weekStart, offset);
+    const path = buildWeeklySummaryPath(summaryDate, settings);
+
+    try {
+      const markdown = await fetchDiary(path, settings);
+      return { date: summaryDate, path, markdown };
+    } catch (error) {
+      if (error.status !== 404) {
+        throw error;
+      }
+    }
+  }
+
+  return null;
 }
 
 async function fetchDiary(path, settings) {
@@ -312,6 +377,18 @@ function buildDiaryPath(date, settings) {
     .join("/");
 }
 
+function buildWeeklySummaryPath(date, settings) {
+  const folder = applyDateTemplate(
+    trimSlashes(settings.folder),
+    date
+  );
+  const fileName = `${formatIsoDate(date)}週.md`;
+
+  return [folder, fileName]
+    .filter(Boolean)
+    .join("/");
+}
+
 function applyDateTemplate(template, date) {
   const year = date.getFullYear();
   const month = date.getMonth() + 1;
@@ -339,7 +416,7 @@ async function renderDiary(date, path, markdown) {
   const tocButton = document.createElement("button");
   const tocPanel = document.createElement("nav");
   const pathText = document.createElement("p");
-  const article = document.createElement("article");
+  const article = createMarkdownArticle(date, path, markdown);
 
   meta.className = "diary-meta";
   titleRow.className = "diary-title-row";
@@ -357,27 +434,6 @@ async function renderDiary(date, path, markdown) {
   pathText.textContent =
     `${state.settings.owner}/${state.settings.repo} / ${path}`;
 
-  article.className = "markdown-body";
-
-  if (!window.marked) {
-    throw new Error("Markdown変換ライブラリを読み込めませんでした。");
-  }
-
-  const parser = new window.marked.Marked({ gfm: true, breaks: true });
-  parser.use(createMediaLinkExtension(date, path, state.settings));
-  const rawHtml = parser.parse(markdown);
-
-  if (window.DOMPurify) {
-    article.innerHTML = window.DOMPurify.sanitize(rawHtml);
-  } else {
-    article.innerHTML = rawHtml;
-  }
-
-  article.querySelectorAll("a.media-file-link").forEach((link) => {
-    link.target = "_blank";
-    link.rel = "noopener noreferrer";
-  });
-
   const headings = prepareHeadings(article);
   renderToc(tocPanel, headings, tocButton);
   addHeadingTocButtons(headings);
@@ -388,6 +444,68 @@ async function renderDiary(date, path, markdown) {
   document.title = `${formatIsoDate(date)} - GitHub 日記ビューアー`;
 
   await renderMermaidDiagrams(article);
+}
+
+async function renderWeeklySummary(summary) {
+  const meta = document.createElement("header");
+  const titleRow = document.createElement("div");
+  const title = document.createElement("h2");
+  const tocButton = document.createElement("button");
+  const tocPanel = document.createElement("nav");
+  const pathText = document.createElement("p");
+  const article = createMarkdownArticle(
+    summary.date,
+    summary.path,
+    summary.markdown
+  );
+
+  meta.className = "diary-meta";
+  titleRow.className = "diary-title-row";
+  title.textContent = "この週のまとめ";
+  tocButton.type = "button";
+  tocButton.className = "toc-button";
+  tocButton.textContent = "TOC";
+  tocButton.setAttribute("aria-label", "見出し一覧を表示");
+  tocButton.setAttribute("aria-expanded", "false");
+  tocButton.setAttribute("aria-controls", "toc-panel-meta");
+  tocPanel.id = "toc-panel-meta";
+  tocPanel.className = "toc-panel";
+  tocPanel.setAttribute("aria-label", "見出し一覧");
+  tocPanel.hidden = true;
+  pathText.textContent =
+    `${state.settings.owner}/${state.settings.repo} / ${summary.path}`;
+
+  const headings = prepareHeadings(article);
+  renderToc(tocPanel, headings, tocButton);
+  addHeadingTocButtons(headings);
+
+  titleRow.append(title, tocButton);
+  meta.append(titleRow, tocPanel, pathText);
+  elements.contentPanel.replaceChildren(meta, article);
+  document.title = `${formatIsoDate(summary.date)}週 - GitHub 日記ビューアー`;
+
+  await renderMermaidDiagrams(article);
+}
+
+function createMarkdownArticle(date, path, markdown) {
+  if (!window.marked) {
+    throw new Error("Markdown変換ライブラリを読み込めませんでした。");
+  }
+
+  const article = document.createElement("article");
+  const parser = new window.marked.Marked({ gfm: true, breaks: true });
+  parser.use(createMediaLinkExtension(date, path, state.settings));
+  const rawHtml = parser.parse(markdown);
+
+  article.className = "markdown-body";
+  article.innerHTML = window.DOMPurify
+    ? window.DOMPurify.sanitize(rawHtml)
+    : rawHtml;
+  article.querySelectorAll("a.media-file-link").forEach((link) => {
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+  });
+  return article;
 }
 
 function createMediaLinkExtension(date, diaryPath, settings) {
