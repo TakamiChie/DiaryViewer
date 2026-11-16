@@ -1,6 +1,6 @@
 "use strict";
 
-const CACHE_NAME = "diary-viewer-v3";
+const CACHE_NAME = "diary-viewer-v4";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -41,6 +41,14 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") {
+    return;
+  }
+
+  if (event.request.cache === "reload") {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => cacheResponse(event.request, response))
+    );
     return;
   }
 

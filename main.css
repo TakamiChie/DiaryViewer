@@ -66,6 +66,15 @@ button {
   margin-bottom: 14px;
 }
 
+#reloadDiaryButton {
+  white-space: nowrap;
+}
+
+#reloadDiaryButton:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
 .title-group h1 {
   margin: 0;
   font-size: clamp(1.25rem, 4vw, 1.75rem);
@@ -110,7 +119,7 @@ button {
 
 .calendar-header {
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
   gap: 8px;
   align-items: center;
   margin-bottom: 10px;

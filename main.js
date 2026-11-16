@@ -32,6 +32,7 @@ const elements = {
   settingsDialog: document.querySelector("#settingsDialog"),
   settingsForm: document.querySelector("#settingsForm"),
   openSettingsButton: document.querySelector("#openSettingsButton"),
+  reloadDiaryButton: document.querySelector("#reloadDiaryButton"),
   cancelSettingsButton: document.querySelector("#cancelSettingsButton"),
   clearSettingsButton: document.querySelector("#clearSettingsButton"),
   previousWeekButton: document.querySelector("#previousWeekButton"),
@@ -75,6 +76,9 @@ function initialize() {
 
 function bindEvents() {
   elements.openSettingsButton.addEventListener("click", openSettings);
+  elements.reloadDiaryButton.addEventListener("click", () => {
+    loadDiary(state.selectedDate, true);
+  });
   elements.weeklySummaryButton.addEventListener("click", () => {
     if (state.weeklySummary) {
       renderWeeklySummary(state.weeklySummary);
@@ -87,6 +91,7 @@ function bindEvents() {
   elements.clearSettingsButton.addEventListener("click", () => {
     localStorage.removeItem(STORAGE_KEY);
     state.settings = { ...defaultSettings };
+    elements.reloadDiaryButton.disabled = true;
     fillSettingsForm(state.settings);
     state.weeklySummary = null;
     updateWeeklySummaryButton();
@@ -285,7 +290,7 @@ async function updateWeeklySummaryButton(weekStart = getWeekStart(state.visibleW
   }
 }
 
-async function loadDiary(date) {
+async function loadDiary(date, forceReload = false) {
   if (!hasRequiredSettings(state.settings)) {
     showStatus("GitHub接続設定を入力してください。");
     return;
@@ -293,10 +298,12 @@ async function loadDiary(date) {
 
   const requestId = ++state.requestId;
   const path = buildDiaryPath(date, state.settings);
+  elements.reloadDiaryButton.disabled = true;
+  elements.reloadDiaryButton.textContent = "読込中…";
   showStatus(`${formatJapaneseDate(date)}の日記を読み込んでいます。`);
 
   try {
-    const markdown = await fetchDiary(path, state.settings);
+    const markdown = await fetchDiary(path, state.settings, forceReload);
 
     if (requestId !== state.requestId) {
       return;
@@ -310,6 +317,11 @@ async function loadDiary(date) {
 
     console.error(error);
     showStatus(createFriendlyError(error, path), true);
+  } finally {
+    if (requestId === state.requestId) {
+      elements.reloadDiaryButton.disabled = !hasRequiredSettings(state.settings);
+      elements.reloadDiaryButton.textContent = "再読込";
+    }
   }
 }
 
@@ -333,7 +345,7 @@ async function fetchWeeklySummary(date, settings) {
   return null;
 }
 
-async function fetchDiary(path, settings) {
+async function fetchDiary(path, settings, forceReload = false) {
   const encodedOwner = encodeURIComponent(settings.owner);
   const encodedRepo = encodeURIComponent(settings.repo);
   const encodedPath = path
@@ -351,7 +363,7 @@ async function fetchDiary(path, settings) {
       "Authorization": `Bearer ${settings.token}`,
       "X-GitHub-Api-Version": API_VERSION
     },
-    cache: "no-store"
+    cache: forceReload ? "reload" : "no-store"
   });
 
   if (!response.ok) {
